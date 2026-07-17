@@ -1,10 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useErrorStore } from "@/store/errorStore.js"
+
 
 export default function UploadArea() {
   const [pdfFile, setPdfFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  
+  const setError = useErrorStore((state) => state.setError);
 
   const inputRef = useRef(null);
 
@@ -12,7 +16,7 @@ export default function UploadArea() {
     if (!file) return;
 
     if (file.type !== "application/pdf") {
-      alert("Please upload a PDF.");
+      setError("Not PDF!","The file you uploaded was not a pdf") 
       return;
     }
 
