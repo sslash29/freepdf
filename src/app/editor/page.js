@@ -1,16 +1,30 @@
-"use client"
-import UploadArea from "../../components/editor/UploadArea.js"
-import {useState} from "react"
-const page = () => {
-  const [isUpload, setIsUpload] = useState(false)
+"use client";
+
+import { useState } from "react";
+import UploadArea from "@/components/editor/UploadArea";
+import PdfViewer from "@/components/pdf/PdfViewer";
+import { usePdfStore } from "@/store/pdfStore";
+
+export default function EditorPage() {
+  const pdfFile = usePdfStore((state) => state.pdfFile);
+  const [showUpload, setShowUpload] = useState(false);
+
+  if (pdfFile) {
+    return <PdfViewer />;
+  }
+
   return (
-    <div className="w-full h-[100vh] flex items-center justify-center">
-    { isUpload ? 
-      <UploadArea />
-  : <button onClick={() => setIsUpload((upload) => !upload)} className="flex items-center rounded-2xl bg-blue-500 text-white font-semibold px-4 py-2 hover:scale-110 transition">Upload</button>
-    }
+    <div className="w-full h-screen flex items-center justify-center">
+      {showUpload ? (
+        <UploadArea />
+      ) : (
+        <button
+          onClick={() => setShowUpload(true)}
+          className="px-6 py-3 rounded-xl bg-blue-600 text-white"
+        >
+          Upload PDF
+        </button>
+      )}
     </div>
-  )}
-
-export default page
-
+  );
+}
