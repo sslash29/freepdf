@@ -6,4 +6,3 @@ export const usePdfStore = create((set) => ({
   setPdfFile: (file) => set({ pdfFile: file }),
   clearPdf: () => set({ pdfFile: null }),
 }));
-
