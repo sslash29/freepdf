@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Stage, Layer, Rect, Text } from "react-konva";
 import pdfjs from "@/lib/pdf";
 import PdfPage from "./PdfPage";
@@ -17,21 +17,31 @@ export default function PdfViewer() {
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
   const [texts, setTexts] = useState([]);
+  const [textValue, setTextValue] = useState({
+    isText: false,
+    text: "",
+    x: 0,
+    y: 0,
+  });
+
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (textValue.isText && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [textValue.isText]);
 
   const handleCanvasClick = (e) => {
     if (!tool) return;
 
     const pos = e.target.getStage().getPointerPosition();
-
-    setTexts((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        x: pos.x - 5,
-        y: pos.y - 5,
-        text: "New text",
-      },
-    ]);
+    setTextValue((state) => ({
+      ...state,
+      isText: true,
+      x: pos.x - 5,
+      y: pos.y - 5,
+    }));
   };
 
   useEffect(() => {
@@ -92,6 +102,49 @@ export default function PdfViewer() {
           className="relative"
           style={{ width: viewport.width, height: viewport.height }}
         >
+          {textValue.isText && (
+            <input
+              ref={inputRef}
+              type="text"
+              value={textValue.text}
+              onChange={(e) =>
+                setTextValue((state) => ({
+                  ...state,
+                  text: e.target.value,
+                }))
+              }
+              onBlur={() => {
+                if (textValue.text.trim() !== "") {
+                  setTexts((prev) => [
+                    ...prev,
+                    {
+                      id: Date.now(),
+                      x: textValue.x - 5,
+                      y: textValue.y - 5,
+                      text: textValue.text,
+                    },
+                  ]);
+                }
+                setTextValue({
+                  isText: false,
+                  text: "",
+                  x: 0,
+                  y: 0,
+                });
+              }}
+              style={{
+                position: "absolute",
+                left: `${textValue.x}px`,
+                top: `${textValue.y}px`,
+                zIndex: 10,
+                color: "red",
+                fontWeight: "bold",
+                background: "transparent",
+                border: "1px dashed red",
+                outline: "none",
+              }}
+            />
+          )}
           <PdfPage page={page} scale={scale} />
           <Stage
             width={viewport.width}
