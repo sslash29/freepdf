@@ -7,7 +7,6 @@ import PdfPage from "./PdfPage";
 import Toolbar from "./Toolbar.js";
 import { usePdfStore } from "@/store/pdfStore";
 import { useToolbarStore } from "@/store/toolbarStore";
-
 export default function PdfViewer() {
   const pdfFile = usePdfStore((state) => state.pdfFile);
   const { tool, setTool } = useToolbarStore((state) => state);
@@ -20,9 +19,11 @@ export default function PdfViewer() {
   const [textValue, setTextValue] = useState({
     isText: false,
     text: "",
+    textColor: "#000000",
     x: 0,
     y: 0,
   });
+  const [textColor, setTextColor] = useState("#0000");
 
   const inputRef = useRef(null);
 
@@ -35,13 +36,16 @@ export default function PdfViewer() {
   const handleCanvasClick = (e) => {
     if (!tool) return;
 
-    const pos = e.target.getStage().getPointerPosition();
-    setTextValue((state) => ({
-      ...state,
-      isText: true,
-      x: pos.x - 5,
-      y: pos.y - 5,
-    }));
+    if (tool === "Add Text") {
+      const pos = e.target.getStage().getPointerPosition();
+      setTextValue((state) => ({
+        ...state,
+        textColor: textColor,
+        isText: true,
+        x: pos.x - 5,
+        y: pos.y - 5,
+      }));
+    }
   };
 
   useEffect(() => {
@@ -88,13 +92,22 @@ export default function PdfViewer() {
   return (
     <div
       className="h-screen bg-gray-200"
-      style={{ cursor: tool === "Add Text" ? "copy" : "default" }}
+      style={{
+        cursor:
+          tool === "Add Text"
+            ? "copy"
+            : tool === "Remove Text"
+              ? "not-allowed"
+              : "default",
+      }}
     >
       <Toolbar
         setPageNumber={setPageNumber}
         setScale={setScale}
         pageNumber={pageNumber}
         pdf={pdf}
+        textColor={textColor}
+        setTextColor={setTextColor}
       />
 
       <div className="flex justify-center mt-6">
@@ -122,12 +135,15 @@ export default function PdfViewer() {
                       x: textValue.x - 5,
                       y: textValue.y - 5,
                       text: textValue.text,
+                      textColor: textValue.textColor, // <-- Save the color
                     },
                   ]);
                 }
+
                 setTextValue({
                   isText: false,
                   text: "",
+                  textColor: "#000000",
                   x: 0,
                   y: 0,
                 });
@@ -137,10 +153,10 @@ export default function PdfViewer() {
                 left: `${textValue.x}px`,
                 top: `${textValue.y}px`,
                 zIndex: 10,
-                color: "red",
+                color: textColor,
                 fontWeight: "bold",
                 background: "transparent",
-                border: "1px dashed red",
+                border: ` 1px dashed ${textColor}`,
                 outline: "none",
               }}
             />
@@ -160,7 +176,7 @@ export default function PdfViewer() {
                   y={item.y}
                   text={item.text}
                   fontSize={24}
-                  fill="red"
+                  fill={item.textColor}
                   draggable
                 />
               ))}

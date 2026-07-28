@@ -40,5 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-TODO.md
+todo.txt
 METHODOLOGY.md

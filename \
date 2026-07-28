@@ -8,8 +8,8 @@ const Toolbar = ({
   setScale,
   pageNumber,
   pdf,
-  textColor,
-  setTextColor,
+  textValue,
+  setTextValue,
 }) => {
   const { tool, setTool } = useToolbarStore((state) => state);
 
@@ -18,6 +18,7 @@ const Toolbar = ({
     setTool(e.currentTarget.textContent);
     console.log(e);
   }
+
   return (
     <div className="flex justify-between gap-3 p-4 bg-white shadow text-black">
       <div className="flex gap-3 p-4 font-semibold">
@@ -43,7 +44,10 @@ const Toolbar = ({
       </div>
 
       <div className="flex gap-3 p-4 font-semibold">
-        <ColorPicker textColor={textColor} setTextColor={setTextColor} />
+        <ColorPicker
+          textColor={textValue.textColor}
+          setTextColor={setTextValue}
+        />
         <button onClick={handleToolClick}>Edit Text</button>
         <button onClick={handleToolClick}>Add Text</button>
         <button onClick={handleToolClick}>Remove Text</button>
