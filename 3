@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
 
+import { useEffect, useState, useRef } from "react";
 import { Stage, Layer, Rect, Text } from "react-konva";
 import pdfjs from "@/lib/pdf";
 import PdfPage from "./PdfPage";
@@ -50,11 +50,9 @@ export default function PdfViewer() {
 
   const handleRemoveUserText = (e) => {
     const id = e.target.attrs.id;
-    console.log(id);
-    console.log(texts);
-    setTexts((prev) => prev.filter((text) => text.id != id));
-  };
 
+    setTexts((prev) => prev.filter((text) => text.id !== id));
+  };
   useEffect(() => {
     if (!pdfFile) return;
     const load = async () => {
