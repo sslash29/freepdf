@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 
 import { Stage, Layer, Text } from "react-konva";
 import pdfjs from "@/lib/pdf";
@@ -7,7 +7,12 @@ import PdfPage from "./PdfPage";
 import Toolbar from "./Toolbar.js";
 import { usePdfStore } from "@/store/pdfStore";
 import { useToolbarStore } from "@/store/toolbarStore";
-import { baselineOffset, matchTextStyleAt } from "@/lib/pdfFont";
+import {
+  AUTO_FONT,
+  baselineOffset,
+  collectDocumentFonts,
+  matchTextStyleAt,
+} from "@/lib/pdfFont";
 
 const EMPTY_TEXT = {
   isText: false,
@@ -37,7 +42,14 @@ export default function PdfViewer() {
   });
   const [textValue, setTextValue] = useState(EMPTY_TEXT);
   const [textColor, setTextColor] = useState("#000000");
+  const [fontValue, setFontValue] = useState(AUTO_FONT);
   const inputRef = useRef(null);
+
+  const activeTextContent = textContent?.page === page ? textContent.content : null;
+  const documentFonts = useMemo(
+    () => collectDocumentFonts(page, activeTextContent),
+    [page, activeTextContent]
+  );
 
   useEffect(() => {
     if (textValue.isText && inputRef.current) {
@@ -66,7 +78,7 @@ export default function PdfViewer() {
       const pos = e.target.getStage().getPointerPosition();
       const matched = matchTextStyleAt(
         page,
-        textContent?.page === page ? textContent.content : null,
+        activeTextContent,
         scale,
         pos.x,
         pos.y
@@ -76,9 +88,9 @@ export default function PdfViewer() {
         isText: true,
         textColor: textColor,
         textWeight: weightValue.value,
-        fontFamily: matched.fontFamily,
+        fontFamily: fontValue.fontFamily || matched.fontFamily,
         fontSize: matched.fontSize,
-        italic: matched.italic,
+        italic: fontValue.fontFamily ? !!fontValue.italic : matched.italic,
         x: matched.x,
         baselineY: matched.baselineY,
       });
@@ -147,11 +159,15 @@ export default function PdfViewer() {
         setPageNumber={setPageNumber}
         setScale={setScale}
         pageNumber={pageNumber}
+        scale={scale}
         pdf={pdf}
         textColor={textColor}
         setTextColor={setTextColor}
         weightValue={weightValue}
         setWeightValue={setWeightValue}
+        fontValue={fontValue}
+        setFontValue={setFontValue}
+        documentFonts={documentFonts}
       />
 
       <div className="flex justify-center mt-6">

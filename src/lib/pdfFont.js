@@ -53,6 +53,55 @@ export function baselineOffset(fontStyle, fontFamily, fontSize) {
   return offset;
 }
 
+export const STANDARD_FONTS = [
+  { id: "helvetica", label: "Helvetica", fontFamily: "Helvetica, Arial, sans-serif" },
+  { id: "times", label: "Times", fontFamily: '"Times New Roman", Times, serif' },
+  { id: "courier", label: "Courier", fontFamily: '"Courier New", Courier, monospace' },
+  { id: "georgia", label: "Georgia", fontFamily: "Georgia, serif" },
+  { id: "verdana", label: "Verdana", fontFamily: "Verdana, Geneva, sans-serif" },
+];
+
+export const AUTO_FONT = {
+  id: "auto",
+  label: "Match document",
+  fontFamily: null,
+};
+
+function prettyFontName(fontObj) {
+  const raw = fontObj.name || fontObj.loadedName || "";
+  const cleaned = raw
+    .replace(/^[A-Z]{6}\+/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return cleaned || fontObj.loadedName || "Unnamed font";
+}
+
+export function collectDocumentFonts(page, textContent) {
+  if (!page || !textContent?.items?.length) return [];
+
+  const byLabel = new Map();
+  for (const item of textContent.items) {
+    const fontName = item.fontName;
+    if (!fontName || !item.str?.trim()) continue;
+    if (!page.commonObjs?.has(fontName)) continue;
+
+    const fontObj = page.commonObjs.get(fontName);
+    if (!fontObj?.loadedName) continue;
+
+    const label = prettyFontName(fontObj);
+    if (byLabel.has(label)) continue;
+
+    byLabel.set(label, {
+      id: fontName,
+      label,
+      fontFamily: `${fontObj.loadedName}, ${fontObj.fallbackName || "sans-serif"}`,
+      italic: !!fontObj.italic,
+    });
+  }
+
+  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export function matchTextStyleAt(page, textContent, scale, pointerX, pointerY) {
   const x = pointerX / scale;
   const y = pointerY / scale;
