@@ -2,6 +2,7 @@
 
 import { useToolbarStore } from "@/store/toolbarStore";
 import ColorPicker from "@/components/ui/ColorPicker/ColorPicker";
+import FontWeightPicker from "@/components/ui/FontWeightPicker";
 
 const Toolbar = ({
   setPageNumber,
@@ -10,6 +11,8 @@ const Toolbar = ({
   pdf,
   textColor,
   setTextColor,
+  weightValue,
+  setWeightValue,
 }) => {
   const { tool, setTool } = useToolbarStore((state) => state);
 
@@ -19,7 +22,7 @@ const Toolbar = ({
     console.log(e);
   }
   return (
-    <div className="flex justify-between gap-3 p-4 bg-white shadow text-black">
+    <div className="sticky top-0 z-20 flex justify-between gap-3 p-4 bg-white shadow text-black">
       <div className="flex gap-3 p-4 font-semibold">
         <button onClick={() => setPageNumber((p) => Math.max(1, p - 1))}>
           Previous
@@ -44,6 +47,10 @@ const Toolbar = ({
 
       <div className="flex gap-3 p-4 font-semibold">
         <ColorPicker textColor={textColor} setTextColor={setTextColor} />
+        <FontWeightPicker
+          weightValue={weightValue}
+          setWeightValue={setWeightValue}
+        />
         <button onClick={handleToolClick}>Edit Text</button>
         <button onClick={handleToolClick}>Add Text</button>
         <button onClick={handleToolClick}>Remove Text</button>

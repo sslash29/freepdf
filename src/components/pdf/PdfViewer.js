@@ -1,30 +1,42 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 
-import { Stage, Layer, Rect, Text } from "react-konva";
+import { Stage, Layer, Text } from "react-konva";
 import pdfjs from "@/lib/pdf";
 import PdfPage from "./PdfPage";
 import Toolbar from "./Toolbar.js";
 import { usePdfStore } from "@/store/pdfStore";
 import { useToolbarStore } from "@/store/toolbarStore";
+import { baselineOffset, matchTextStyleAt } from "@/lib/pdfFont";
+
+const EMPTY_TEXT = {
+  isText: false,
+  text: "",
+  textWeight: "400",
+  textColor: "#000000",
+  fontFamily: "Helvetica, Arial, sans-serif",
+  fontSize: 16,
+  italic: false,
+  x: 0,
+  baselineY: 0,
+};
+
 export default function PdfViewer() {
   const pdfFile = usePdfStore((state) => state.pdfFile);
   const { tool, setTool } = useToolbarStore((state) => state);
 
   const [pdf, setPdf] = useState(null);
   const [page, setPage] = useState(null);
+  const [textContent, setTextContent] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
   const [texts, setTexts] = useState([]);
-  const [textValue, setTextValue] = useState({
-    isText: false,
-    text: "",
-    textColor: "#000000",
-    x: 0,
-    y: 0,
+  const [weightValue, setWeightValue] = useState({
+    label: "Regular",
+    value: "400",
   });
-  const [textColor, setTextColor] = useState("#0000");
-
+  const [textValue, setTextValue] = useState(EMPTY_TEXT);
+  const [textColor, setTextColor] = useState("#000000");
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -33,25 +45,48 @@ export default function PdfViewer() {
     }
   }, [textValue.isText]);
 
+  useEffect(() => {
+    if (!page) return;
+    let cancelled = false;
+    page
+      .getTextContent()
+      .then((content) => {
+        if (!cancelled) setTextContent({ page, content });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
+
   const handleCanvasClick = (e) => {
     if (!tool) return;
 
     if (tool === "Add Text") {
       const pos = e.target.getStage().getPointerPosition();
-      setTextValue((state) => ({
-        ...state,
-        textColor: textColor,
+      const matched = matchTextStyleAt(
+        page,
+        textContent?.page === page ? textContent.content : null,
+        scale,
+        pos.x,
+        pos.y
+      );
+      setTextValue({
+        ...EMPTY_TEXT,
         isText: true,
-        x: pos.x - 5,
-        y: pos.y - 5,
-      }));
+        textColor: textColor,
+        textWeight: weightValue.value,
+        fontFamily: matched.fontFamily,
+        fontSize: matched.fontSize,
+        italic: matched.italic,
+        x: matched.x,
+        baselineY: matched.baselineY,
+      });
     }
   };
 
   const handleRemoveUserText = (e) => {
     const id = e.target.attrs.id;
-    console.log(id);
-    console.log(texts);
     setTexts((prev) => prev.filter((text) => text.id != id));
   };
 
@@ -98,7 +133,7 @@ export default function PdfViewer() {
   const viewport = page.getViewport({ scale });
   return (
     <div
-      className="h-screen bg-gray-200"
+      className="min-h-screen bg-gray-200 pb-10"
       style={{
         cursor:
           tool === "Add Text"
@@ -115,6 +150,8 @@ export default function PdfViewer() {
         pdf={pdf}
         textColor={textColor}
         setTextColor={setTextColor}
+        weightValue={weightValue}
+        setWeightValue={setWeightValue}
       />
 
       <div className="flex justify-center mt-6">
@@ -139,32 +176,43 @@ export default function PdfViewer() {
                     ...prev,
                     {
                       id: Date.now(),
-                      x: textValue.x - 5,
-                      y: textValue.y - 5,
+                      x: textValue.x,
+                      baselineY: textValue.baselineY,
                       text: textValue.text,
-                      textColor: textValue.textColor, // <-- Save the color
+                      textColor: textValue.textColor,
+                      textWeight: textValue.textWeight,
+                      fontFamily: textValue.fontFamily,
+                      fontSize: textValue.fontSize,
+                      italic: textValue.italic,
                     },
                   ]);
                 }
 
-                setTextValue({
-                  isText: false,
-                  text: "",
-                  textColor: "#000000",
-                  x: 0,
-                  y: 0,
-                });
+                setTextValue(EMPTY_TEXT);
               }}
               style={{
                 position: "absolute",
-                left: `${textValue.x}px`,
-                top: `${textValue.y}px`,
+                left: `${textValue.x * scale}px`,
+                top: `${
+                  textValue.baselineY * scale -
+                  baselineOffset(
+                    `${textValue.italic ? "italic " : ""}${textValue.textWeight}`,
+                    textValue.fontFamily,
+                    textValue.fontSize * scale
+                  )
+                }px`,
                 zIndex: 10,
                 color: textColor,
-                fontWeight: "bold",
+                fontFamily: textValue.fontFamily,
+                fontSize: `${textValue.fontSize * scale}px`,
+                fontWeight: textValue.textWeight,
+                fontStyle: textValue.italic ? "italic" : "normal",
+                lineHeight: 1,
+                padding: 0,
+                border: "none",
                 background: "transparent",
-                border: ` 1px dashed ${textColor}`,
-                outline: "none",
+                outline: `1px dashed ${textColor}`,
+                outlineOffset: "2px",
               }}
             />
           )}
@@ -176,19 +224,30 @@ export default function PdfViewer() {
             onClick={(e) => handleCanvasClick(e)}
           >
             <Layer>
-              {texts.map((item) => (
-                <Text
-                  id={String(item.id)}
-                  key={item.id}
-                  x={item.x}
-                  y={item.y}
-                  text={item.text}
-                  fontSize={24}
-                  fill={item.textColor}
-                  draggable
-                  onClick={handleRemoveUserText}
-                />
-              ))}
+              {texts.map((item) => {
+                const fontSize = item.fontSize * scale;
+                const fontStyle = `${item.italic ? "italic " : ""}${
+                  item.textWeight
+                }`;
+                return (
+                  <Text
+                    id={String(item.id)}
+                    key={item.id}
+                    x={item.x * scale}
+                    y={
+                      item.baselineY * scale -
+                      baselineOffset(fontStyle, item.fontFamily, fontSize)
+                    }
+                    text={item.text}
+                    fontSize={fontSize}
+                    fontFamily={item.fontFamily}
+                    fontStyle={fontStyle}
+                    fill={item.textColor}
+                    draggable
+                    onClick={handleRemoveUserText}
+                  />
+                );
+              })}
             </Layer>
           </Stage>
         </div>

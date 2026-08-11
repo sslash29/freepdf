@@ -1,0 +1,2 @@
+x 2026-08-03 2026-07-25 Remove text that's added by the user not from the pdf +free-pdf @feature
+x 2026-07-28 2026-07-28 Change Text Color +free-pdf @feature
