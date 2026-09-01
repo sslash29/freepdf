@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Check, Pipette } from "lucide-react";
 
 const PRESETS = [
@@ -28,9 +28,6 @@ const ColorPicker = ({ textColor, setTextColor }) => {
     setDraft(value);
     if (isValidHex(value)) setTextColor(value);
   };
-  useEffect(() => {
-    console.log(textColor);
-  }, [textColor]);
   return (
     <div className="relative inline-block font-sans">
       <button

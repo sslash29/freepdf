@@ -1,7 +1,15 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from "react";
 
-import { Stage, Layer, Text } from "react-konva";
+import {
+  Stage,
+  Layer,
+  Rect,
+  Ellipse,
+  Line,
+  Text,
+  Transformer,
+} from "react-konva";
 import pdfjs from "@/lib/pdf";
 import PdfPage from "./PdfPage";
 import Toolbar from "./Toolbar.js";
@@ -13,7 +21,7 @@ import {
   collectDocumentFonts,
   matchTextStyleAt,
 } from "@/lib/pdfFont";
-
+import combinePdfTransforms from "@/lib/combinedPdfTransforms";
 const EMPTY_TEXT = {
   isText: false,
   text: "",
@@ -25,81 +33,198 @@ const EMPTY_TEXT = {
   x: 0,
   baselineY: 0,
 };
+const DEFAULT_SHAPE_WIDTH = 150;
+const DEFAULT_SHAPE_HEIGHT = 80;
+const SHAPE_STROKE_WIDTH = 3;
 
 export default function PdfViewer() {
   const pdfFile = usePdfStore((state) => state.pdfFile);
   const { tool, setTool } = useToolbarStore((state) => state);
 
-  const [pdf, setPdf] = useState(null);
-  const [page, setPage] = useState(null);
-  const [textContent, setTextContent] = useState(null);
+  const [pdfDocument, setPdfDocument] = useState(null);
+  const [pdfPage, setPdfPage] = useState(null);
+  const [pageTextContent, setPageTextContent] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
-  const [texts, setTexts] = useState([]);
-  const [weightValue, setWeightValue] = useState({
+  const [userTexts, setUserTexts] = useState([]);
+  const [userShapes, setUserShapes] = useState([]);
+  const [textMaskRects, setTextMaskRects] = useState([]);
+  const [shapeType, setShapeType] = useState("rect");
+  const [shapeFilled, setShapeFilled] = useState(true);
+  const [rawSelectedShapeId, setSelectedShapeId] = useState(null);
+  const [fontWeightOption, setFontWeightOption] = useState({
     label: "Regular",
     value: "400",
   });
-  const [textValue, setTextValue] = useState(EMPTY_TEXT);
+  const [activeTextInput, setActiveTextInput] = useState(EMPTY_TEXT);
   const [textColor, setTextColor] = useState("#000000");
-  const [fontValue, setFontValue] = useState(AUTO_FONT);
+  const [fontOption, setFontOption] = useState(AUTO_FONT);
   const inputRef = useRef(null);
+  const shapeNodeRefs = useRef({});
+  const transformerRef = useRef(null);
 
-  const activeTextContent = textContent?.page === page ? textContent.content : null;
+  const activeTextContent =
+    pageTextContent?.page === pdfPage ? pageTextContent.content : null;
   const documentFonts = useMemo(
-    () => collectDocumentFonts(page, activeTextContent),
-    [page, activeTextContent]
+    () => collectDocumentFonts(pdfPage, activeTextContent),
+    [pdfPage, activeTextContent],
   );
+  const pageUserTexts = useMemo(
+    () => userTexts.filter((item) => item.page === pageNumber),
+    [userTexts, pageNumber],
+  );
+  const pageUserShapes = useMemo(
+    () => userShapes.filter((shape) => shape.page === pageNumber),
+    [userShapes, pageNumber],
+  );
+  const pageTextMaskRects = useMemo(
+    () => textMaskRects.filter((mask) => mask.page === pageNumber),
+    [textMaskRects, pageNumber],
+  );
+  const selectedShapeId = pageUserShapes.some(
+    (shape) => shape.id === rawSelectedShapeId,
+  )
+    ? rawSelectedShapeId
+    : null;
 
   useEffect(() => {
-    if (textValue.isText && inputRef.current) {
+    if (activeTextInput.isText && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [textValue.isText]);
+  }, [activeTextInput.isText]);
 
   useEffect(() => {
-    if (!page) return;
+    if (!pdfPage) return;
     let cancelled = false;
-    page
+    pdfPage
       .getTextContent()
-      .then((content) => {
-        if (!cancelled) setTextContent({ page, content });
+      .then((pageContent) => {
+        if (!cancelled)
+          setPageTextContent({ page: pdfPage, content: pageContent });
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [page]);
+  }, [pdfPage]);
+
+  useEffect(() => {
+    const node = selectedShapeId
+      ? shapeNodeRefs.current[selectedShapeId]
+      : null;
+    if (!transformerRef.current) return;
+    transformerRef.current.nodes(node ? [node] : []);
+    transformerRef.current.getLayer()?.batchDraw();
+  }, [selectedShapeId, pageUserShapes]);
+
+  useEffect(() => {
+    const handleDeleteKeyDown = (e) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (!selectedShapeId) return;
+      if (["INPUT", "TEXTAREA"].includes(e.target?.tagName)) return;
+      setUserShapes((prev) => prev.filter((s) => s.id !== selectedShapeId));
+      setSelectedShapeId(null);
+    };
+
+    window.addEventListener("keydown", handleDeleteKeyDown);
+    return () => window.removeEventListener("keydown", handleDeleteKeyDown);
+  }, [selectedShapeId]);
 
   const handleCanvasClick = (e) => {
+    if (e.target === e.target.getStage()) {
+      setSelectedShapeId(null);
+    }
     if (!tool) return;
+    const pos = e.target.getStage().getPointerPosition();
 
     if (tool === "Add Text") {
-      const pos = e.target.getStage().getPointerPosition();
-      const matched = matchTextStyleAt(
-        page,
+      const matchedStyle = matchTextStyleAt(
+        pdfPage,
         activeTextContent,
         scale,
         pos.x,
-        pos.y
+        pos.y,
       );
-      setTextValue({
+      setActiveTextInput({
         ...EMPTY_TEXT,
         isText: true,
         textColor: textColor,
-        textWeight: weightValue.value,
-        fontFamily: fontValue.fontFamily || matched.fontFamily,
-        fontSize: matched.fontSize,
-        italic: fontValue.fontFamily ? !!fontValue.italic : matched.italic,
-        x: matched.x,
-        baselineY: matched.baselineY,
+        textWeight: fontWeightOption.value,
+        fontFamily: fontOption.fontFamily || matchedStyle.fontFamily,
+        fontSize: matchedStyle.fontSize,
+        italic: fontOption.fontFamily
+          ? !!fontOption.italic
+          : matchedStyle.italic,
+        x: matchedStyle.x,
+        baselineY: matchedStyle.baselineY,
       });
+    } else if (tool === "Add Shape") {
+      const id = Date.now();
+      setUserShapes((prev) => [
+        ...prev,
+        {
+          id,
+          page: pageNumber,
+          type: shapeType,
+          x: pos.x / scale,
+          y: pos.y / scale,
+          width: DEFAULT_SHAPE_WIDTH,
+          height: DEFAULT_SHAPE_HEIGHT,
+          rotation: 0,
+          filled: shapeFilled,
+          color: textColor,
+        },
+      ]);
+      setSelectedShapeId(id);
     }
   };
 
   const handleRemoveUserText = (e) => {
     const id = e.target.attrs.id;
-    setTexts((prev) => prev.filter((text) => text.id != id));
+    setUserTexts((prev) => prev.filter((text) => text.id != id));
+  };
+
+  const handleShapeClick = (shapeId) => (e) => {
+    e.cancelBubble = true;
+    if (tool === "Remove Text") {
+      setUserShapes((prev) => prev.filter((s) => s.id !== shapeId));
+      setSelectedShapeId((current) => (current === shapeId ? null : current));
+      return;
+    }
+    setSelectedShapeId(shapeId);
+  };
+
+  const handleShapeDragEnd = (shapeId) => (e) => {
+    const node = e.target;
+    setUserShapes((prev) =>
+      prev.map((shape) =>
+        shape.id === shapeId
+          ? { ...shape, x: node.x() / scale, y: node.y() / scale }
+          : shape,
+      ),
+    );
+  };
+
+  const handleShapeTransformEnd = (shapeId) => (e) => {
+    const node = e.target;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    setUserShapes((prev) =>
+      prev.map((shape) =>
+        shape.id === shapeId
+          ? {
+              ...shape,
+              x: node.x() / scale,
+              y: node.y() / scale,
+              width: Math.max(5, shape.width * scaleX),
+              height: Math.max(5, shape.height * scaleY),
+              rotation: node.rotation(),
+            }
+          : shape,
+      ),
+    );
   };
 
   useEffect(() => {
@@ -109,32 +234,33 @@ export default function PdfViewer() {
       const loadingTask = pdfjs.getDocument({
         data: bytes,
       });
-      const document = await loadingTask.promise;
-      setPdf(document);
+      const loadedDocument = await loadingTask.promise;
+      setPdfDocument(loadedDocument);
     };
     load();
   }, [pdfFile]);
 
   useEffect(() => {
-    if (!pdf) return;
+    if (!pdfDocument) return;
     const loadPage = async () => {
-      const p = await pdf.getPage(pageNumber);
-      setPage(p);
+      const loadedPage = await pdfDocument.getPage(pageNumber);
+      setPdfPage(loadedPage);
     };
     loadPage();
-  }, [pdf, pageNumber]);
+  }, [pdfDocument, pageNumber]);
 
   useEffect(() => {
-    const handleEscClick = (e) => {
+    const handleEscKeyDown = (e) => {
       if (e.key !== "Escape") return;
       setTool(null);
+      setSelectedShapeId(null);
     };
 
-    window.addEventListener("keydown", handleEscClick);
-    return () => window.removeEventListener("keydown", handleEscClick);
+    window.addEventListener("keydown", handleEscKeyDown);
+    return () => window.removeEventListener("keydown", handleEscKeyDown);
   }, [setTool]);
 
-  if (!pdf || !page) {
+  if (!pdfDocument || !pdfPage) {
     return (
       <div className="flex justify-center items-center h-screen">
         Loading PDF...
@@ -142,7 +268,7 @@ export default function PdfViewer() {
     );
   }
 
-  const viewport = page.getViewport({ scale });
+  const viewport = pdfPage.getViewport({ scale });
   return (
     <div
       className="min-h-screen bg-gray-200 pb-10"
@@ -150,9 +276,13 @@ export default function PdfViewer() {
         cursor:
           tool === "Add Text"
             ? "copy"
-            : tool === "Remove Text"
-              ? "not-allowed"
-              : "default",
+            : tool === "Add Shape"
+              ? "crosshair"
+              : tool === "Edit Text"
+                ? "text"
+                : tool === "Remove Text"
+                  ? "not-allowed"
+                  : "default",
       }}
     >
       <Toolbar
@@ -160,14 +290,18 @@ export default function PdfViewer() {
         setScale={setScale}
         pageNumber={pageNumber}
         scale={scale}
-        pdf={pdf}
+        pdf={pdfDocument}
         textColor={textColor}
         setTextColor={setTextColor}
-        weightValue={weightValue}
-        setWeightValue={setWeightValue}
-        fontValue={fontValue}
-        setFontValue={setFontValue}
+        weightValue={fontWeightOption}
+        setWeightValue={setFontWeightOption}
+        fontValue={fontOption}
+        setFontValue={setFontOption}
         documentFonts={documentFonts}
+        shapeType={shapeType}
+        setShapeType={setShapeType}
+        shapeFilled={shapeFilled}
+        setShapeFilled={setShapeFilled}
       />
 
       <div className="flex justify-center mt-6">
@@ -175,64 +309,66 @@ export default function PdfViewer() {
           className="relative"
           style={{ width: viewport.width, height: viewport.height }}
         >
-          {textValue.isText && (
+          {activeTextInput.isText && (
             <input
               ref={inputRef}
               type="text"
-              value={textValue.text}
+              value={activeTextInput.text}
               onChange={(e) =>
-                setTextValue((state) => ({
+                setActiveTextInput((state) => ({
                   ...state,
                   text: e.target.value,
                 }))
               }
               onBlur={() => {
-                if (textValue.text.trim() !== "") {
-                  setTexts((prev) => [
+                if (activeTextInput.text.trim() !== "") {
+                  setUserTexts((prev) => [
                     ...prev,
                     {
                       id: Date.now(),
-                      x: textValue.x,
-                      baselineY: textValue.baselineY,
-                      text: textValue.text,
-                      textColor: textValue.textColor,
-                      textWeight: textValue.textWeight,
-                      fontFamily: textValue.fontFamily,
-                      fontSize: textValue.fontSize,
-                      italic: textValue.italic,
+                      page: pageNumber,
+                      x: activeTextInput.x,
+                      baselineY: activeTextInput.baselineY,
+                      text: activeTextInput.text,
+                      textColor: activeTextInput.textColor,
+                      textWeight: activeTextInput.textWeight,
+                      fontFamily: activeTextInput.fontFamily,
+                      fontSize: activeTextInput.fontSize,
+                      italic: activeTextInput.italic,
                     },
                   ]);
                 }
 
-                setTextValue(EMPTY_TEXT);
+                setActiveTextInput(EMPTY_TEXT);
               }}
               style={{
                 position: "absolute",
-                left: `${textValue.x * scale}px`,
+                left: `${activeTextInput.x * scale}px`,
                 top: `${
-                  textValue.baselineY * scale -
+                  activeTextInput.baselineY * scale -
                   baselineOffset(
-                    `${textValue.italic ? "italic " : ""}${textValue.textWeight}`,
-                    textValue.fontFamily,
-                    textValue.fontSize * scale
+                    `${activeTextInput.italic ? "italic " : ""}${activeTextInput.textWeight}`,
+                    activeTextInput.fontFamily,
+                    activeTextInput.fontSize * scale,
                   )
                 }px`,
                 zIndex: 10,
                 color: textColor,
-                fontFamily: textValue.fontFamily,
-                fontSize: `${textValue.fontSize * scale}px`,
-                fontWeight: textValue.textWeight,
-                fontStyle: textValue.italic ? "italic" : "normal",
+                fontFamily: activeTextInput.fontFamily,
+                fontSize: `${activeTextInput.fontSize * scale}px`,
+                fontWeight: activeTextInput.textWeight,
+                fontStyle: activeTextInput.italic ? "italic" : "normal",
                 lineHeight: 1,
                 padding: 0,
                 border: "none",
                 background: "transparent",
                 outline: `1px dashed ${textColor}`,
                 outlineOffset: "2px",
+                fieldSizing: "content",
               }}
             />
           )}
-          <PdfPage page={page} scale={scale} />
+          <PdfPage page={pdfPage} scale={scale} />
           <Stage
             width={viewport.width}
             height={viewport.height}
@@ -240,7 +376,91 @@ export default function PdfViewer() {
             onClick={(e) => handleCanvasClick(e)}
           >
             <Layer>
-              {texts.map((item) => {
+              {pageTextMaskRects.map((mask) => (
+                <Rect
+                  key={mask.id}
+                  x={mask.x * scale}
+                  y={mask.y * scale}
+                  width={mask.width * scale}
+                  height={mask.height * scale}
+                  fill="#ffffff"
+                  listening={false}
+                />
+              ))}
+              {pageUserShapes.map((shape) => {
+                const centerX = shape.x * scale;
+                const centerY = shape.y * scale;
+                const width = shape.width * scale;
+                const height = shape.height * scale;
+                const fill = shape.filled ? shape.color : "transparent";
+                const stroke = shape.filled ? undefined : shape.color;
+                const strokeWidth = shape.filled ? 0 : SHAPE_STROKE_WIDTH;
+                const shapeRef = (node) => {
+                  if (node) shapeNodeRefs.current[shape.id] = node;
+                };
+                const commonProps = {
+                  ref: shapeRef,
+                  rotation: shape.rotation || 0,
+                  fill,
+                  stroke,
+                  strokeWidth,
+                  draggable: true,
+                  onClick: handleShapeClick(shape.id),
+                  onTap: handleShapeClick(shape.id),
+                  onDragEnd: handleShapeDragEnd(shape.id),
+                  onTransformEnd: handleShapeTransformEnd(shape.id),
+                };
+
+                if (shape.type === "ellipse") {
+                  return (
+                    <Ellipse
+                      key={shape.id}
+                      {...commonProps}
+                      x={centerX}
+                      y={centerY}
+                      radiusX={width / 2}
+                      radiusY={height / 2}
+                    />
+                  );
+                }
+
+                if (shape.type === "triangle") {
+                  return (
+                    <Line
+                      key={shape.id}
+                      {...commonProps}
+                      x={centerX}
+                      y={centerY}
+                      points={[
+                        0,
+                        -height / 2,
+                        width / 2,
+                        height / 2,
+                        -width / 2,
+                        height / 2,
+                      ]}
+                      closed
+                    />
+                  );
+                }
+
+                return (
+                  <Rect
+                    key={shape.id}
+                    {...commonProps}
+                    x={centerX}
+                    y={centerY}
+                    width={width}
+                    height={height}
+                    offsetX={width / 2}
+                    offsetY={height / 2}
+                  />
+                );
+              })}
+              {selectedShapeId && (
+                <Transformer ref={transformerRef} rotateEnabled />
+              )}
+              {pageUserTexts.map((item) => {
                 const fontSize = item.fontSize * scale;
                 const fontStyle = `${item.italic ? "italic " : ""}${
                   item.textWeight
@@ -261,6 +481,75 @@ export default function PdfViewer() {
                     fill={item.textColor}
                     draggable
                     onClick={handleRemoveUserText}
+                  />
+                );
+              })}
+              {activeTextContent?.items.map((item, idx) => {
+                if (!item.str?.trim()) return null; // skip whitespace-only items
+                const combinedTransform = combinePdfTransforms(
+                  viewport.transform,
+                  item.transform,
+                );
+                const fontSize = Math.hypot(
+                  combinedTransform[2],
+                  combinedTransform[3],
+                );
+
+                const style = activeTextContent.styles?.[item.fontName];
+                const fontAscent = style?.ascent
+                  ? style.ascent * fontSize
+                  : style?.descent
+                    ? (1 + style.descent) * fontSize
+                    : fontSize;
+
+                return (
+                  <Text
+                    key={idx}
+                    x={combinedTransform[4]}
+                    y={combinedTransform[5] - fontAscent}
+                    text={item.str}
+                    fontSize={fontSize}
+                    fontFamily="sans-serif" // only used to size the hit box, never rendered
+                    fill="#000000" // required for the shape to register on Konva's hit graph
+                    opacity={0} // invisible on screen, still hit-testable
+                    listening={true}
+                    onClick={(e) => {
+                      if (tool !== "Edit Text") return;
+                      e.cancelBubble = true;
+                      const matchedStyle = matchTextStyleAt(
+                        pdfPage,
+                        activeTextContent,
+                        scale,
+                        combinedTransform[4], // x coordinate
+                        combinedTransform[5] - fontAscent, // y coordinate
+                      );
+                      setTextMaskRects((prev) => [
+                        ...prev,
+                        {
+                          id: `mask-${idx}-${Date.now()}`,
+                          page: pageNumber,
+                          x: combinedTransform[4] / scale,
+                          y: (combinedTransform[5] - fontAscent) / scale,
+                          width: item.width || 0,
+                          height: fontSize / scale,
+                        },
+                      ]);
+                      setActiveTextInput({
+                        ...EMPTY_TEXT,
+                        text: item.str,
+                        isText: true,
+                        textColor: textColor,
+                        textWeight: fontWeightOption.value,
+                        fontFamily:
+                          fontOption.fontFamily || matchedStyle.fontFamily,
+                        fontSize: matchedStyle.fontSize,
+                        italic: fontOption.fontFamily
+                          ? !!fontOption.italic
+                          : matchedStyle.italic,
+                        x: matchedStyle.x,
+                        baselineY: matchedStyle.baselineY,
+                      });
+                    }}
                   />
                 );
               })}

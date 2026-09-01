@@ -4,12 +4,14 @@ import { useToolbarStore } from "@/store/toolbarStore";
 import ColorPicker from "@/components/ui/ColorPicker/ColorPicker";
 import FontWeightPicker from "@/components/ui/FontWeightPicker";
 import FontPicker from "@/components/ui/FontPicker";
+import ShapePicker from "@/components/ui/ShapePicker";
 import {
   ChevronLeft,
   ChevronRight,
   Minus,
   Pencil,
   Plus,
+  Square,
   TextCursorInput,
   Trash2,
 } from "lucide-react";
@@ -26,6 +28,7 @@ const readout =
 const tools = [
   { label: "Edit Text", icon: Pencil },
   { label: "Add Text", icon: TextCursorInput },
+  { label: "Add Shape", icon: Square },
   { label: "Remove Text", icon: Trash2 },
 ];
 
@@ -42,6 +45,10 @@ const Toolbar = ({
   fontValue,
   setFontValue,
   documentFonts,
+  shapeType,
+  setShapeType,
+  shapeFilled,
+  setShapeFilled,
 }) => {
   const { tool, setTool } = useToolbarStore((state) => state);
 
@@ -103,6 +110,12 @@ const Toolbar = ({
         <FontWeightPicker
           weightValue={weightValue}
           setWeightValue={setWeightValue}
+        />
+        <ShapePicker
+          shapeType={shapeType}
+          setShapeType={setShapeType}
+          shapeFilled={shapeFilled}
+          setShapeFilled={setShapeFilled}
         />
 
         <div className="mx-1 h-6 w-px bg-slate-200" />
