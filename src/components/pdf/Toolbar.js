@@ -14,6 +14,7 @@ import {
   Square,
   TextCursorInput,
   Trash2,
+  Move,
 } from "lucide-react";
 
 const MIN_SCALE = 0.4;
@@ -26,6 +27,7 @@ const readout =
   "select-none text-sm font-medium tabular-nums text-slate-600 text-center";
 
 const tools = [
+  { label: "Move Text", icon: Move },
   { label: "Edit Text", icon: Pencil },
   { label: "Add Text", icon: TextCursorInput },
   { label: "Add Shape", icon: Square },

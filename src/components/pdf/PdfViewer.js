@@ -24,6 +24,7 @@ import {
 import combinePdfTransforms from "@/lib/combinedPdfTransforms";
 const EMPTY_TEXT = {
   isText: false,
+  type: "userText",
   text: "",
   textWeight: "400",
   textColor: "#000000",
@@ -62,9 +63,14 @@ export default function PdfViewer() {
   const inputRef = useRef(null);
   const shapeNodeRefs = useRef({});
   const transformerRef = useRef(null);
-
+  
   const activeTextContent =
     pageTextContent?.page === pdfPage ? pageTextContent.content : null;
+  
+  useEffect(() => {
+    console.log(activeTextContent)
+  }, [activeTextContent])
+
   const documentFonts = useMemo(
     () => collectDocumentFonts(pdfPage, activeTextContent),
     [pdfPage, activeTextContent],
@@ -180,6 +186,7 @@ export default function PdfViewer() {
   };
 
   const handleRemoveUserText = (e) => {
+    if (tool !== "Remove Text") return;
     const id = e.target.attrs.id;
     setUserTexts((prev) => prev.filter((text) => text.id != id));
   };
@@ -280,9 +287,11 @@ export default function PdfViewer() {
               ? "crosshair"
               : tool === "Edit Text"
                 ? "text"
-                : tool === "Remove Text"
-                  ? "not-allowed"
-                  : "default",
+                : tool === "Move Text"
+                  ? "grab"
+                  : tool === "Remove Text"
+                    ? "not-allowed"
+                    : "default",
       }}
     >
       <Toolbar
@@ -335,6 +344,7 @@ export default function PdfViewer() {
                       fontFamily: activeTextInput.fontFamily,
                       fontSize: activeTextInput.fontSize,
                       italic: activeTextInput.italic,
+                      type:"userText"
                     },
                   ]);
                 }
@@ -465,15 +475,17 @@ export default function PdfViewer() {
                 const fontStyle = `${item.italic ? "italic " : ""}${
                   item.textWeight
                 }`;
+                const yOffset = baselineOffset(
+                  fontStyle,
+                  item.fontFamily,
+                  fontSize,
+                );
                 return (
                   <Text
                     id={String(item.id)}
                     key={item.id}
                     x={item.x * scale}
-                    y={
-                      item.baselineY * scale -
-                      baselineOffset(fontStyle, item.fontFamily, fontSize)
-                    }
+                    y={item.baselineY * scale - yOffset}
                     text={item.text}
                     fontSize={fontSize}
                     fontFamily={item.fontFamily}
@@ -481,6 +493,20 @@ export default function PdfViewer() {
                     fill={item.textColor}
                     draggable
                     onClick={handleRemoveUserText}
+                    onDragEnd={(e) => {
+                      const node = e.target;
+                      setUserTexts((prev) =>
+                        prev.map((t) =>
+                          t.id === item.id
+                            ? {
+                                ...t,
+                                x: node.x() / scale,
+                                baselineY: (node.y() + yOffset) / scale,
+                              }
+                            : t,
+                        ),
+                      );
+                    }}
                   />
                 );
               })}
@@ -514,8 +540,8 @@ export default function PdfViewer() {
                     opacity={0} // invisible on screen, still hit-testable
                     listening={true}
                     onClick={(e) => {
-                      if (tool !== "Edit Text") return;
-                      e.cancelBubble = true;
+                      if (tool !== "Edit Text" && tool !== "Move Text") return;
+                      e.cancelBubble = true; // due to konva not having .stopPropagation()
                       const matchedStyle = matchTextStyleAt(
                         pdfPage,
                         activeTextContent,
@@ -534,21 +560,56 @@ export default function PdfViewer() {
                           height: fontSize / scale,
                         },
                       ]);
-                      setActiveTextInput({
-                        ...EMPTY_TEXT,
-                        text: item.str,
-                        isText: true,
-                        textColor: textColor,
-                        textWeight: fontWeightOption.value,
-                        fontFamily:
-                          fontOption.fontFamily || matchedStyle.fontFamily,
-                        fontSize: matchedStyle.fontSize,
-                        italic: fontOption.fontFamily
-                          ? !!fontOption.italic
-                          : matchedStyle.italic,
-                        x: matchedStyle.x,
-                        baselineY: matchedStyle.baselineY,
-                      });
+
+                      if (tool === "Edit Text") {
+                        setActiveTextInput({
+                          ...EMPTY_TEXT,
+                          text: item.str,
+                          isText: true,
+                          textColor: textColor,
+                          textWeight: fontWeightOption.value,
+                          fontFamily:
+                            fontOption.fontFamily || matchedStyle.fontFamily,
+                          fontSize: matchedStyle.fontSize,
+                          italic: fontOption.fontFamily
+                            ? !!fontOption.italic
+                            : matchedStyle.italic,
+                          x: matchedStyle.x,
+                          baselineY: matchedStyle.baselineY,
+                        });
+                      } else {
+                        // Move Text: skip the editable input entirely — drop the
+                        // original string straight into userTexts as a draggable node.
+                        setUserTexts((prev) => [
+                          ...prev,
+                          {
+                            id: Date.now(),
+                            page: pageNumber,
+                            x: matchedStyle.x,
+                            baselineY: matchedStyle.baselineY,
+                            text: item.str,
+                            textColor: textColor,
+                            textWeight: fontWeightOption.value,
+                            fontFamily:
+                              fontOption.fontFamily || matchedStyle.fontFamily,
+                            fontSize: matchedStyle.fontSize,
+                            italic: fontOption.fontFamily
+                              ? !!fontOption.italic
+                              : matchedStyle.italic,
+                            type: "userText",
+                          },
+                        ]);
+                      }
+
+                      setPageTextContent((prev) => ({
+                        ...prev,
+                        content: {
+                          ...prev.content,
+                          items: prev.content.items.filter(
+                            (_, id) => idx !== id,
+                          ),
+                        },
+                      }));
                     }}
                   />
                 );
